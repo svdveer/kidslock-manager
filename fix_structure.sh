@@ -2,13 +2,20 @@
 # 1. Maak de juiste submap aan
 mkdir -p kidslock-manager
 
-# 2. Verplaats alle add-on bestanden van root naar de submap
-# (We gebruiken 2>/dev/null om foutmeldingen te onderdrukken als ze al verplaatst zijn)
-mv config.yaml Dockerfile main.py requirements.txt run.sh README.md kidslock-manager/ 2>/dev/null
+echo "Start herstructurering..."
 
-# 3. Verplaats de templates map
+# 2. Verplaats bestanden als ze in de root staan
+for file in config.yaml Dockerfile main.py requirements.txt run.sh README.md; do
+    if [ -f "$file" ]; then
+        mv "$file" kidslock-manager/
+        echo "Verplaatst: $file"
+    fi
+done
+
+# 3. Verplaats templates
 if [ -d "templates" ]; then
     mv templates kidslock-manager/
+    echo "Verplaatst: templates map"
 fi
 
 # 4. Verwijder de oude/foutieve 'kidslock' map als die nog bestaat
