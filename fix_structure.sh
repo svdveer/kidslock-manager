@@ -14,4 +14,11 @@ fi
 # 4. Verwijder de oude/foutieve 'kidslock' map als die nog bestaat
 rm -rf kidslock
 
-echo "Structuur hersteld. Commit en push deze wijzigingen naar GitHub."
+echo "--- CONTROLE ---"
+echo "Root map (moet repository.yaml bevatten):"
+ls -1
+echo "---"
+echo "Submap kidslock-manager (moet config.yaml, Dockerfile, etc. bevatten):"
+ls -1 kidslock-manager/
+echo "---"
+echo "Als dit klopt: git add ., git commit en git push uitvoeren!"
