@@ -2,8 +2,15 @@ from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 import uvicorn
+import json
+import os
 
 # --- Configuration ---
+options_path = "/data/options.json"
+if os.path.exists(options_path):
+    with open(options_path, "r") as f:
+        options = json.load(f)
+else:
     options = {"tvs": []}
 
 # Global State
@@ -141,4 +148,3 @@ async def toggle_lock(tv_name: str):
     return RedirectResponse(url="./", status_code=303)
 
 # --- Startup ---
-
