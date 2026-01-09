@@ -1,6 +1,3 @@
---- /dev/null
-+++ /config/addons/kidslock_manager/repository.yaml
-@@ -0,0 +1,3 @@
-+name: "KidsLock Manager Repo"
-+url: "https://github.com/svdveer/kidslock-manager"
-+maintainer: "svdveer"
+name: "KidsLock Manager Repo"
+url: "https://github.com/svdveer/kidslock-manager"
+maintainer: "svdveer"
