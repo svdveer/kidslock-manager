@@ -15,7 +15,7 @@
 
 ### 1. Android TV App
 
-1. Download de nieuwste APK van de [Releases pagina](https://www.google.com/search?q=https://github.com/svdveer/kidslock-repository/releases).
+1. Download de nieuwste APK van de [Releases pagina](https://github.com/svdveer/kidslock-repository/releases).
 2. Installeer de APK op je TV (bijv. via de 'Downloader' app of USB-stick).
 3. Open de app en verleen de gevraagde rechten:
 * **Toon boven andere apps** (Overlay permission).
@@ -71,4 +71,3 @@ Vrij te gebruiken voor persoonlijk gebruik (MIT Licentie).
 3. Plak de bovenstaande tekst erin.
 4. Sla op en `git push`. GitHub zal dit nu automatisch als een mooie startpagina tonen!
 
-**Zal ik je helpen met het maken van een 'Short URL' die je makkelijk kunt intypen op je TV om de app te downloaden?**
