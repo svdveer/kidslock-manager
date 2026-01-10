@@ -61,6 +61,3 @@ Omdat de add-on gebruikmaakt van MQTT Discovery, verschijnen de TV's automatisch
 ## 📄 Licentie
 
 MIT Licentie - Vrij voor persoonlijk gebruik.
-Wil je dat ik nog even kritisch kijk naar de **pincode-functionaliteit** in de `main.py`, of is de huidige opzet voor nu voldoende voor je brainstormsessie?
-
-```
