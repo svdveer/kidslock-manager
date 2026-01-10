@@ -28,6 +28,7 @@ for tv in options.get("tvs", []):
 
 def is_online(ip):
     try:
+        # Check of de TV reageert op het netwerk
         res = subprocess.run(['ping', '-c', '1', '-W', '1', str(ip)], stdout=subprocess.DEVNULL)
         return res.returncode == 0
     except: return False
@@ -52,7 +53,9 @@ async def home(request: Request):
     with data_lock:
         for name, s in tv_states.items():
             tvs_display.append({
-                "name": name, "online": s["online"], "locked": s["locked"],
+                "name": name, 
+                "online": s["online"], 
+                "locked": s["locked"],
                 "remaining": int(s["remaining_minutes"]),
                 "limit": s["config"].get("daily_limit", 120),
                 "bedtime": s["config"].get("bedtime", "21:00"),
@@ -65,12 +68,16 @@ async def toggle(name: str):
     with data_lock:
         if name in tv_states:
             action = "unlock" if tv_states[name]["locked"] else "lock"
+            ip = tv_states[name]['config']['ip']
             try:
-                requests.post(f"http://{tv_states[name]['config']['ip']}:8080/{action}", timeout=2)
+                # Kortstondige timeout om Nginx 504 errors te voorkomen
+                requests.post(f"http://{ip}:8080/{action}", timeout=1.5)
                 tv_states[name]["locked"] = not tv_states[name]["locked"]
                 tv_states[name]["manual_override"] = True
+                logger.info(f"Actie {action} succesvol voor {name}")
             except Exception as e:
-                logger.error(f"Fout bij {name}: {e}")
+                logger.error(f"TV {name} op {ip} reageert niet: {e}")
+    # Redirect naar ./ houdt de browser binnen de Ingress tunnel
     return RedirectResponse(url="./", status_code=303)
 
 @app.post("/add_time/{name}")
@@ -78,7 +85,7 @@ async def add_time(name: str, minutes: int = Form(...)):
     with data_lock:
         if name in tv_states:
             tv_states[name]["remaining_minutes"] += minutes
-            logger.info(f"{minutes} min toegevoegd aan {name}")
+            logger.info(f"{minutes} minuten toegevoegd aan {name}")
     return RedirectResponse(url="./", status_code=303)
 
 if __name__ == "__main__":
