@@ -1,18 +1,20 @@
-ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:latest
-FROM $BUILD_FROM
+FROM python:3.11-alpine
 
-RUN apk add --no-cache \
-    python3 \
-    py3-pip \
-    iputils \
-    bash \
-    curl \
-    sqlite
+# Installeer systeem tools (ping en sqlite)
+RUN apk add --no-cache iputils sqlite bash
 
 WORKDIR /app
 
-COPY requirements.txt /tmp/
-RUN pip3 install --no-cache-dir -r /tmp/requirements.txt --break-system-packages
+# Kopieer en installeer eisen
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . /app
-RUN chmod a+x /app/run.sh
+# Kopieer de rest
+COPY . .
+
+# Maak run.sh uitvoerbaar
+RUN chmod a+x run.sh
+
+# In een standaard Alpine image MOETEN we wel CMD gebruiken
+# omdat we de s6-overlay niet gebruiken.
+CMD ["python", "main.py"]
