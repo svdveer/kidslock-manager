@@ -11,7 +11,6 @@ logger = logging.getLogger("KidsLock")
 DB_PATH = "/data/kidslock.db"
 OPTIONS_PATH = "/data/options.json"
 
-# --- Load HA Options ---
 try:
     with open(OPTIONS_PATH, 'r') as f:
         options = json.load(f)
@@ -19,30 +18,25 @@ except:
     options = {}
 
 mqtt_conf = options.get("mqtt", {})
-# Gebruik defaults als ze niet zijn ingevuld
 MQTT_HOST = mqtt_conf.get("host", "core-mosquitto")
 MQTT_PORT = mqtt_conf.get("port", 1883)
 
 def init_db():
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.execute('CREATE TABLE IF NOT EXISTS tv_config (name TEXT PRIMARY KEY, ip TEXT, daily_limit INTEGER, bedtime TEXT)')
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA table_info(tv_config)")
-        if 'no_limit' not in [c[1] for c in cursor.fetchall()]:
-            conn.execute('ALTER TABLE tv_config ADD COLUMN no_limit INTEGER DEFAULT 0')
-        conn.execute('CREATE TABLE IF NOT EXISTS tv_state (tv_name TEXT PRIMARY KEY, remaining REAL)')
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.error(f"DB Init error: {e}")
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute('CREATE TABLE IF NOT EXISTS tv_config (name TEXT PRIMARY KEY, ip TEXT, daily_limit INTEGER, bedtime TEXT)')
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(tv_config)")
+    if 'no_limit' not in [c[1] for c in cursor.fetchall()]:
+        conn.execute('ALTER TABLE tv_config ADD COLUMN no_limit INTEGER DEFAULT 0')
+    conn.execute('CREATE TABLE IF NOT EXISTS tv_state (tv_name TEXT PRIMARY KEY, remaining REAL)')
+    conn.commit()
+    conn.close()
 
 init_db()
-
 tv_states = {}
 data_lock = threading.RLock()
 
-# --- MQTT Logica ---
+# --- MQTT ---
 mqtt_client = mqtt.Client()
 
 def on_connect(client, userdata, flags, rc):
@@ -51,15 +45,14 @@ def on_connect(client, userdata, flags, rc):
         with data_lock:
             for name in tv_states:
                 slug = name.lower().replace(" ", "_")
-                discovery_topic = f"homeassistant/switch/kidslock_{slug}/config"
-                payload = {
+                discovery_payload = {
                     "name": f"{name} Lock",
                     "command_topic": f"kidslock/{slug}/set",
                     "state_topic": f"kidslock/{slug}/state",
                     "unique_id": f"kidslock_{slug}",
                     "device": {"identifiers": ["kidslock_mgr"], "name": "KidsLock Manager"}
                 }
-                client.publish(discovery_topic, json.dumps(payload), retain=True)
+                client.publish(f"homeassistant/switch/kidslock_{slug}/config", json.dumps(discovery_payload), retain=True)
                 client.subscribe(f"kidslock/{slug}/set")
 
 def on_message(client, userdata, msg):
@@ -84,58 +77,41 @@ if mqtt_conf.get("username"):
 try:
     mqtt_client.connect_async(MQTT_HOST, MQTT_PORT)
     mqtt_client.loop_start()
-except Exception as e:
-    logger.error(f"MQTT start fout: {e}")
+except:
+    logger.error("MQTT connectie mislukt")
 
 # --- Monitor ---
 def monitor():
-    logger.info("Monitor loop v1.4.9 gestart.")
     last_tick = time.time()
     while True:
         try:
-            # TV's laden uit DB
             conn = sqlite3.connect(DB_PATH); cursor = conn.cursor()
             cursor.execute("SELECT name, ip, daily_limit, bedtime, no_limit FROM tv_config")
             rows = cursor.fetchall(); conn.close()
-            
             with data_lock:
                 current_names = [r[0] for r in rows]
                 for n in list(tv_states.keys()):
                     if n not in current_names: del tv_states[n]
-                
                 delta = (time.time() - last_tick) / 60.0
                 last_tick = time.time()
-
                 for name, ip, limit, bedtime, no_limit in rows:
                     if name not in tv_states:
                         tv_states[name] = {"ip": ip, "limit": limit, "remaining": float(limit), "online": False, "locked": False, "no_limit": no_limit}
                     s = tv_states[name]
                     s.update({"ip": ip, "limit": limit, "no_limit": no_limit})
-
-                    # Ping
                     res = subprocess.run(['ping', '-c', '1', '-W', '1', s["ip"]], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     s["online"] = (res.returncode == 0)
-
-                    # Logica
                     if s["no_limit"] == 1:
                         if s["locked"]:
-                            requests.post(f"http://{s['ip']}:8080/unlock", timeout=1.5)
-                            s["locked"] = False
+                            requests.post(f"http://{s['ip']}:8080/unlock", timeout=1.5); s["locked"] = False
                     elif s["online"] and not s["locked"]:
                         s["remaining"] = max(0, s["remaining"] - delta)
-                    
                     if s["remaining"] <= 0 and not s["locked"] and s["no_limit"] == 0:
-                        try:
-                            requests.post(f"http://{s['ip']}:8080/lock", timeout=1.5)
-                            s["locked"] = True
+                        try: requests.post(f"http://{s['ip']}:8080/lock", timeout=1.5); s["locked"] = True
                         except: pass
-
-                    # Status naar MQTT sturen
                     slug = name.lower().replace(" ", "_")
                     mqtt_client.publish(f"kidslock/{slug}/state", "ON" if s["locked"] else "OFF", retain=True)
-
-        except Exception as e:
-            logger.error(f"Loop error: {e}")
+        except: pass
         time.sleep(30)
 
 threading.Thread(target=monitor, daemon=True).start()
@@ -155,21 +131,21 @@ async def settings(request: Request):
     return templates.TemplateResponse("settings.html", {"request": request, "tvs": tvs})
 
 @app.post("/add_tv")
-async def add_tv(name:str=Form(...), ip:str=Form(...), limit:int=Form(...), bedtime:str=Form(...), no_limit:int=Form(0)):
+async def add_tv(request: Request, name:str=Form(...), ip:str=Form(...), limit:int=Form(...), bedtime:str=Form(...), no_limit:int=Form(0)):
     conn = sqlite3.connect(DB_PATH)
     conn.execute("INSERT OR REPLACE INTO tv_config VALUES (?,?,?,?,?)", (name, ip, limit, bedtime, no_limit))
     conn.commit(); conn.close()
-    return RedirectResponse(url="settings", status_code=303)
+    return RedirectResponse(url=request.headers.get("referer", "/settings"), status_code=303)
 
 @app.post("/delete_tv/{name}")
-async def delete_tv(name: str):
+async def delete_tv(request: Request, name: str):
     conn = sqlite3.connect(DB_PATH)
     conn.execute("DELETE FROM tv_config WHERE name = ?", (name,))
     conn.commit(); conn.close()
-    return RedirectResponse(url="../settings", status_code=303)
+    return RedirectResponse(url=request.headers.get("referer", "/settings"), status_code=303)
 
 @app.post("/api/toggle_lock/{name}")
-async def toggle(name: str):
+async def toggle_api(name: str):
     with data_lock:
         if name in tv_states:
             s = tv_states[name]
@@ -183,11 +159,10 @@ async def toggle(name: str):
     return {"status": "ok"}
 
 @app.post("/add_time/{name}")
-async def add_time(name: str, minutes: int = Form(...)):
+async def add_time(request: Request, name: str, minutes: int = Form(...)):
     with data_lock:
-        if name in tv_states:
-            tv_states[name]["remaining"] += minutes
-    return RedirectResponse(url="/", status_code=303)
+        if name in tv_states: tv_states[name]["remaining"] += minutes
+    return RedirectResponse(url=request.headers.get("referer", "/"), status_code=303)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

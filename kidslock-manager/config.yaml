@@ -1,7 +1,7 @@
 name: "KidsLock Manager"
-version: "1.4.9"
+version: "1.5.0"
 slug: "kidslock-manager"
-description: "Stabiele v1.4.9 - MQTT Integratie met Defaults"
+description: "Stabiele v1.5.0 - Fix voor Ingress Redirects & MQTT"
 url: "https://github.com/svdveer/kidslock-repository"
 arch:
   - aarch64
