@@ -1,7 +1,7 @@
 name: "KidsLock Manager"
-version: "1.1.7"
+version: "1.1.8"
 slug: "kidslock-manager"
-description: "Beheer schermtijd voor Android TV"
+description: "Beheer schermtijd voor Android TV via Home Assistant"
 url: "https://github.com/svdveer/kidslock-repository"
 arch:
   - aarch64
