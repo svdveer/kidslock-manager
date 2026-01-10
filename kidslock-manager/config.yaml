@@ -9,33 +9,6 @@ arch:
   - armv7
 startup: application
 boot: auto
-init: false
-services:
-  - mqtt:want
-options:
-  mqtt:
-    host: "core-mosquitto"
-    port: 1883
-    username: "kidslocktv"
-    password: "kidslocktv"
-  tvs:
-    - name: "Woonkamer"
-      ip: "192.168.2.78"
-      daily_limit: 120
-      bedtime: "21:00"
-      no_limit_mode: false
-schema:
-  mqtt:
-    host: str
-    port: int
-    username: str
-    password: str
-  tvs:
-    - name: str
-      ip: str
-      daily_limit: int?
-      bedtime: str?
-      no_limit_mode: bool?
 ingress: true
 ingress_port: 8000
 panel_icon: mdi:lock-clock

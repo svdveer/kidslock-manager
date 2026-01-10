@@ -60,11 +60,11 @@
                 </div>
                 <div class="info-item">
                     <span class="info-label">Daglimiet</span>
-                    {{ tv.limit }} min
+                    {{ tv.limit or '120' }} min
                 </div>
                 <div class="info-item">
                     <span class="info-label">Bedtijd</span>
-                    {{ tv.bedtime }}
+                    {{ tv.bedtime or '21:00' }}
                 </div>
                 <div class="info-item">
                     <span class="info-label">Status</span>
@@ -94,7 +94,7 @@
             </div>
         </div>
         {% endfor %}
-
+        
         {% if logs %}
         <div class="card">
             <h2 style="font-size: 1.1em; color: #666;">Recent Logboek</h2>
