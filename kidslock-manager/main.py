@@ -1,4 +1,5 @@
-import logging, threading, time, sqlite3, requests, subprocess
+import logging, threading, time, sqlite3, requests, subprocess, json, os
+import paho.mqtt.client as mqtt
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -7,23 +8,79 @@ import uvicorn
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("KidsLock")
 DB_PATH = "/data/kidslock.db"
+OPTIONS_PATH = "/data/options.json"
 
+# --- Database & Config ---
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     conn.execute('''CREATE TABLE IF NOT EXISTS tv_config 
-                   (name TEXT PRIMARY KEY, ip TEXT, daily_limit INTEGER, bedtime TEXT)''')
-    cursor = conn.cursor()
-    cursor.execute("PRAGMA table_info(tv_config)")
-    columns = [column[1] for column in cursor.fetchall()]
-    if 'no_limit' not in columns:
-        conn.execute('ALTER TABLE tv_config ADD COLUMN no_limit INTEGER DEFAULT 0')
+                   (name TEXT PRIMARY KEY, ip TEXT, daily_limit INTEGER, bedtime TEXT, no_limit INTEGER DEFAULT 0)''')
     conn.execute('CREATE TABLE IF NOT EXISTS tv_state (tv_name TEXT PRIMARY KEY, remaining REAL)')
     conn.commit()
     conn.close()
 
 init_db()
+
+try:
+    with open(OPTIONS_PATH, 'r') as f:
+        options = json.load(f)
+except:
+    options = {}
+
 data_lock = threading.RLock()
 tv_states = {}
+
+# --- MQTT Logica ---
+mqtt_conf = options.get("mqtt", {})
+client = mqtt.Client()
+
+def on_connect(client, userdata, flags, rc):
+    if rc == 0:
+        logger.info("MQTT verbonden met broker")
+        with data_lock:
+            for name in tv_states:
+                slug = name.lower().replace(" ", "_")
+                discovery_topic = f"homeassistant/switch/kidslock_{slug}/config"
+                payload = {
+                    "name": f"{name} Lock",
+                    "command_topic": f"kidslock/{slug}/set",
+                    "state_topic": f"kidslock/{slug}/state",
+                    "unique_id": f"kidslock_{slug}",
+                    "device": {"identifiers": ["kidslock_manager"], "name": "KidsLock Manager"}
+                }
+                client.publish(discovery_topic, json.dumps(payload), retain=True)
+                client.subscribe(f"kidslock/{slug}/set")
+
+def on_message(client, userdata, msg):
+    topic = msg.topic
+    payload = msg.payload.decode().upper()
+    with data_lock:
+        for name, s in tv_states.items():
+            slug = name.lower().replace(" ", "_")
+            if topic == f"kidslock/{slug}/set":
+                action = "lock" if payload == "ON" else "unlock"
+                send_action(s["ip"], action)
+                s["locked"] = (payload == "ON")
+                client.publish(f"kidslock/{slug}/state", payload, retain=True)
+
+client.on_connect = on_connect
+client.on_message = on_message
+
+if mqtt_conf.get("host"):
+    if mqtt_conf.get("username"):
+        client.username_pw_set(mqtt_conf["username"], mqtt_conf.get("password"))
+    try:
+        client.connect_async(mqtt_conf["host"], mqtt_conf.get("port", 1883))
+        client.loop_start()
+    except:
+        logger.error("MQTT Connectie mislukt")
+
+# --- TV Functies ---
+def send_action(ip, action):
+    try:
+        requests.post(f"http://{ip}:8080/{action}", timeout=1.5)
+        return True
+    except: return False
 
 def load_tvs_from_db():
     conn = sqlite3.connect(DB_PATH)
@@ -52,22 +109,29 @@ def monitor():
             for name, s in tv_states.items():
                 res = subprocess.run(['ping', '-c', '1', '-W', '1', s["ip"]], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 s["online"] = (res.returncode == 0)
+                
                 if s.get("no_limit") == 1:
                     if s["locked"]:
-                        try: requests.post(f"http://{s['ip']}:8080/unlock", timeout=1.5); s["locked"] = False
-                        except: pass
+                        if send_action(s["ip"], "unlock"): s["locked"] = False
                     continue
+                
                 if s["online"] and not s["locked"]:
                     s["remaining"] = max(0, s["remaining"] - delta)
+                
                 if s["remaining"] <= 0 and not s["locked"]:
-                    try: requests.post(f"http://{s['ip']}:8080/lock", timeout=1.5); s["locked"] = True
-                    except: pass
+                    if send_action(s["ip"], "lock"): s["locked"] = True
+                
+                # Update MQTT status
+                slug = name.lower().replace(" ", "_")
+                client.publish(f"kidslock/{slug}/state", "ON" if s["locked"] else "OFF", retain=True)
         time.sleep(30)
 
 threading.Thread(target=monitor, daemon=True).start()
+
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
+# --- Web Routes ---
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     tvs_list = []
@@ -78,7 +142,8 @@ async def home(request: Request):
 @app.get("/settings", response_class=HTMLResponse)
 async def settings(request: Request):
     conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor(); cursor.execute("SELECT * FROM tv_config")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM tv_config")
     tvs = cursor.fetchall(); conn.close()
     return templates.TemplateResponse("settings.html", {"request": request, "tvs": tvs})
 
@@ -101,8 +166,7 @@ async def toggle(name: str):
     with data_lock:
         if name in tv_states:
             action = "unlock" if tv_states[name]["locked"] else "lock"
-            try: requests.post(f"http://{tv_states[name]['ip']}:8080/{action}", timeout=1.5)
-            except: pass
+            send_action(tv_states[name]["ip"], action)
             tv_states[name]["locked"] = not tv_states[name]["locked"]
     return {"status": "ok"}
 
