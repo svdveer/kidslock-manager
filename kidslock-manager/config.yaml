@@ -1,5 +1,5 @@
 name: "KidsLock Manager"
-version: "1.1.9.013"
+version: "1.1.9.014"
 slug: "kidslock-manager"
 description: "Beheer schermtijd voor Android TV via Home Assistant"
 url: "https://github.com/svdveer/kidslock-repository"
@@ -12,18 +12,9 @@ boot: auto
 init: false
 services:
   - mqtt:want
-options:
-  mqtt:
-    host: "core-mosquitto"
-    port: 1883
-    username: "mqtt-user"
-    password: "wachtwoord"
-  tvs:
-    - name: "Woonkamer"
-      ip: "192.168.1.100"
-      daily_limit: 120
-      bedtime: "21:00"
-      no_limit_mode: false
+ingress: true
+ingress_port: 8000
+panel_icon: mdi:lock-clock
 schema:
   mqtt:
     host: str
@@ -36,6 +27,3 @@ schema:
       daily_limit: int?
       bedtime: str?
       no_limit_mode: bool?
-ingress: true
-ingress_port: 8000
-panel_icon: mdi:lock-clock
