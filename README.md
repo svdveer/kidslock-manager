@@ -62,12 +62,3 @@ Deze add-on is gebouwd met:
 
 Vrij te gebruiken voor persoonlijk gebruik (MIT Licentie).
 
----
-
-### Hoe voeg je dit toe?
-
-1. Open **Studio Code Server** in Home Assistant.
-2. Maak een nieuw bestand aan in de root van je repo genaamd `README.md`.
-3. Plak de bovenstaande tekst erin.
-4. Sla op en `git push`. GitHub zal dit nu automatisch als een mooie startpagina tonen!
-
