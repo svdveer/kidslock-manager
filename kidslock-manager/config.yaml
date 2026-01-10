@@ -1,5 +1,5 @@
 name: "KidsLock Manager"
-version: "1.4.6"
+version: "1.4.7"
 slug: "kidslock-manager"
 description: "Non-S6 Alpine Build"
 url: "https://github.com/svdveer/kidslock-repository"
