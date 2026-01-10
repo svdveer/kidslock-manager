@@ -12,34 +12,34 @@
         .btn-blue { background: #1a73e8; }
         .btn-red { background: #ea4335; }
         .btn-green { background: #34a853; }
-        .nav-btn { background: #5f6368; margin-bottom: 20px; text-decoration: none; padding: 10px 20px; color: white; border-radius: 5px; }
-        .time-display { font-size: 2em; font-weight: bold; margin: 10px 0; }
+        .nav-btn { background: #5f6368; text-decoration: none; padding: 10px 20px; color: white; border-radius: 5px; margin-bottom: 20px; }
+        .time-display { font-size: 2.5em; font-weight: bold; margin: 10px 0; }
     </style>
+    <script>
+        async function runAction(endpoint, name, body = null) {
+            await fetch('api/' + endpoint + '/' + name, { method: 'POST', body: body });
+            window.location.reload();
+        }
+    </script>
 </head>
 <body>
-    <h1>🔐 KidsLock Dashboard</h1>
+    <h1>🔐 KidsLock</h1>
     <a href="settings" class="nav-btn">⚙ Instellingen</a>
 
     {% for tv in tvs %}
     <div class="card {% if tv.online %}online{% endif %} {% if tv.locked %}locked{% endif %}">
         <h2>{{ tv.name }}</h2>
         <div class="time-display">
-            {% if tv.no_limit == 1 %} ∞ {% else %} {{ tv.remaining|int }} <span style="font-size: 0.5em;">min</span> {% endif %}
+            {% if tv.no_limit == 1 %} ∞ {% else %} {{ tv.remaining|int }}<span style="font-size: 0.4em;"> min</span>{% endif %}
         </div>
-        <p>Status: <strong>{% if tv.online %}Online{% else %}Uit{% endif %}</strong></p>
         
         <div style="display: flex; gap: 10px;">
             {% if tv.no_limit != 1 %}
-            <form action="add_time/{{ tv.name }}" method="post" style="flex:1; display:flex;">
-                <input type="hidden" name="minutes" value="15">
-                <button type="submit" class="btn btn-blue">+15 Min</button>
-            </form>
+            <button onclick="let fd=new FormData(); fd.append('minutes', 15); runAction('add_time', '{{ tv.name }}', fd)" class="btn btn-blue">+15m</button>
             {% endif %}
-            <form action="toggle_lock/{{ tv.name }}" method="post" style="flex:1; display:flex;">
-                <button type="submit" class="btn {% if tv.locked %}btn-green{% else %}btn-red{% endif %}">
-                    {% if tv.locked %}ONTGRENDEL{% else %}VERGRENDEL{% endif %}
-                </button>
-            </form>
+            <button onclick="runAction('toggle_lock', '{{ tv.name }}')" class="btn {% if tv.locked %}btn-green{% else %}btn-red{% endif %}">
+                {% if tv.locked %}ONTGRENDEL{% else %}VERGRENDEL{% endif %}
+            </button>
         </div>
     </div>
     {% endfor %}

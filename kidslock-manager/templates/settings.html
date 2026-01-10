@@ -7,39 +7,46 @@
         body { font-family: sans-serif; background: #f0f2f5; padding: 20px; }
         .card { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); max-width: 500px; margin: 0 auto 20px; }
         input[type="text"], input[type="number"] { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
-        .btn { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; color: white; font-weight: bold; text-decoration: none; display: inline-block; }
+        .btn { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; color: white; font-weight: bold; text-decoration: none; }
         .btn-blue { background: #1a73e8; width: 100%; }
-        .btn-red { background: #ea4335; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        .btn-edit { background: #fbbc04; color: black; font-size: 0.8em; margin-right: 5px; }
+        .btn-red { background: #ea4335; font-size: 0.8em; }
+        table { width: 100%; margin-top: 20px; }
         td { padding: 10px; border-bottom: 1px solid #eee; }
     </style>
+    <script>
+        function fillForm(name, ip, limit, bedtime, noLimit) {
+            document.getElementById('name').value = name;
+            document.getElementById('ip').value = ip;
+            document.getElementById('limit').value = limit;
+            document.getElementById('bedtime').value = bedtime;
+            document.getElementById('no_limit').checked = (noLimit == 1);
+            document.getElementById('title').innerText = "TV Aanpassen";
+            window.scrollTo(0,0);
+        }
+    </script>
 </head>
 <body>
-    <div style="max-width: 500px; margin: 0 auto 10px;"><a href="./" style="color: #1a73e8; text-decoration: none;">⬅ Terug naar Dashboard</a></div>
+    <div style="max-width: 500px; margin: 0 auto 10px;"><a href="./" style="text-decoration:none;">⬅ Dashboard</a></div>
     <div class="card">
-        <h2>TV Toevoegen</h2>
+        <h2 id="title">TV Toevoegen</h2>
         <form action="add_tv" method="post">
-            <input type="text" name="name" placeholder="Naam" required>
-            <input type="text" name="ip" placeholder="IP Adres" required>
-            <input type="number" name="limit" placeholder="Limiet (min)" value="120">
-            <input type="text" name="bedtime" placeholder="Bedtijd (21:00)" value="21:00">
-            <label style="display: block; margin: 10px 0;">
-                <input type="checkbox" name="no_limit" value="1"> <strong>Onbeperkt modus</strong>
-            </label>
+            <input type="text" id="name" name="name" placeholder="Naam" required>
+            <input type="text" id="ip" name="ip" placeholder="IP Adres" required>
+            <input type="number" id="limit" name="limit" placeholder="Minuten" value="120">
+            <input type="text" id="bedtime" name="bedtime" placeholder="Bedtijd" value="21:00">
+            <label style="display:block; margin: 10px 0;"><input type="checkbox" id="no_limit" name="no_limit" value="1"> Onbeperkt modus</label>
             <button type="submit" class="btn btn-blue">Opslaan</button>
         </form>
     </div>
-
     <div class="card">
-        <h2>Lijst</h2>
         <table>
             {% for tv in tvs %}
             <tr>
-                <td>{{ tv[0] }} {% if tv[4] == 1 %} ♾ {% endif %}</td>
-                <td style="text-align: right;">
-                    <form action="delete_tv/{{ tv[0] }}" method="post" style="display:inline;">
-                        <button type="submit" class="btn btn-red" style="padding: 5px 10px;">Wis</button>
-                    </form>
+                <td>{{ tv[0] }}</td>
+                <td style="text-align:right;">
+                    <button class="btn btn-edit" onclick="fillForm('{{tv[0]}}','{{tv[1]}}','{{tv[2]}}','{{tv[3]}}','{{tv[4]}}')">Edit</button>
+                    <form action="delete_tv/{{ tv[0] }}" method="post" style="display:inline;"><button type="submit" class="btn btn-red">X</button></form>
                 </td>
             </tr>
             {% endfor %}
