@@ -1,9 +1,3 @@
-Een goede **README.md** is het visitekaartje van je project. Het helpt je niet alleen om later te herinneren hoe alles werkt, maar het is ook essentieel als anderen (of jijzelf op een andere TV) de add-on willen installeren.
-
-Hier is een professionele README-opzet die specifiek is afgestemd op jouw **KidsLock Manager** project.
-
----
-
 # 🔐 KidsLock Manager
 
 **KidsLock Manager** is een Home Assistant Add-on gecombineerd met een Android TV applicatie om schermtijd effectief te beheren. Voorkom eindeloze discussies door limieten en bedtijden automatisch af te dwingen via je smart home.
