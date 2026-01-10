@@ -35,7 +35,7 @@ def save_state(tv_name, minutes):
         conn.commit()
         conn.close()
     except Exception as e:
-        logger.error(f"Fout bij opslaan tijd in database: {e}")
+        logger.error(f"Fout bij opslaan in DB: {e}")
 
 if os.path.exists(OPTIONS_PATH):
     with open(OPTIONS_PATH, "r") as f:
@@ -43,17 +43,17 @@ if os.path.exists(OPTIONS_PATH):
 else:
     options = {"tvs": [], "mqtt": {}}
 
-# --- Veilig Pingen (Strikte controle voor TV status) ---
+# --- Veilig Pingen (Fix voor RCE) ---
 def is_tv_online(ip):
     try:
-        # We sturen 2 pings om zeker te weten dat de TV echt 'wakker' is
+        # We sturen 2 pings voor betrouwbaarheid
         res = subprocess.run(['ping', '-c', '2', '-W', '1', str(ip)], 
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return res.returncode == 0
     except:
         return False
 
-# --- Global State Management ---
+# --- Global State ---
 data_lock = threading.RLock()
 tv_states = {}
 first_run_done = False
@@ -76,7 +76,7 @@ def on_connect(client, userdata, flags, rc):
         logger.info("✅ MQTT Verbonden")
         for name in tv_states:
             slug = name.lower().replace(" ", "_")
-            # Discovery voor Home Assistant Switches en Sensoren
+            # Discovery: Switch
             client.publish(f"homeassistant/switch/kidslock_{slug}/config", json.dumps({
                 "name": f"{name} Lock",
                 "command_topic": f"kidslock/{slug}/set",
@@ -84,7 +84,7 @@ def on_connect(client, userdata, flags, rc):
                 "unique_id": f"kidslock_{slug}_switch",
                 "device": {"identifiers": [f"kidslock_{slug}"], "name": name}
             }), retain=True)
-            
+            # Discovery: Sensor voor tijd
             client.publish(f"homeassistant/sensor/kidslock_{slug}_time/config", json.dumps({
                 "name": f"{name} Tijd over",
                 "state_topic": f"kidslock/{slug}/time",
@@ -93,7 +93,6 @@ def on_connect(client, userdata, flags, rc):
                 "device": {"identifiers": [f"kidslock_{slug}"], "name": name},
                 "icon": "mdi:timer-sand"
             }), retain=True)
-            
             client.subscribe(f"kidslock/{slug}/set")
 
 mqtt_client.on_connect = on_connect
@@ -106,52 +105,47 @@ try:
 except Exception as e:
     logger.error(f"MQTT Fout: {e}")
 
-# --- TV Besturing ---
+# --- Control & Monitor ---
 def control_tv(name, action):
     state = tv_states[name]
     try:
         requests.post(f"http://{state['config']['ip']}:8080/{action}", timeout=5)
         state["locked"] = (action == "lock")
         slug = name.lower().replace(" ", "_")
-        # Update status in MQTT
         mqtt_client.publish(f"kidslock/{slug}/state", "ON" if state["locked"] else "OFF", retain=True)
-        mqtt_client.publish(f"kidslock/{slug}/time", int(state["remaining_minutes"]), retain=True)
     except:
-        logger.error(f"TV {name} onbereikbaar")
+        logger.error(f"Fout bij besturen TV {name}")
 
-# --- De Monitor Loop ---
 def monitor_loop():
     global first_run_done
-    time.sleep(10) # Stabilisatie bij opstarten
+    time.sleep(10)
     last_tick = time.time()
     
     while True:
         now = datetime.now()
-        delta_sec = time.time() - last_tick
-        delta_min = delta_sec / 60.0
+        delta_min = (time.time() - last_tick) / 60.0
         last_tick = time.time()
         
         with data_lock:
             for name, state in tv_states.items():
-                # 1. Update online status via Ping
                 state["online"] = is_tv_online(state["config"]["ip"])
                 
-                # 2. Check Onbeperkt modus
+                # Sla alles over als Onbeperkt aan staat
                 if state["config"].get("no_limit_mode", False):
                     if state["locked"] and not state["manual_override"]:
                         control_tv(name, "unlock")
                     continue
 
-                # 3. TIJD AFTREKKEN: Alleen als TV ONLINE is én NIET OP SLOT zit
+                # TIJD AFTREKKEN: Alleen bij online EN niet op slot
                 if state["online"] and not state["locked"]:
                     state["remaining_minutes"] = max(0, state["remaining_minutes"] - delta_min)
                     save_state(name, state["remaining_minutes"])
                     
-                    # Update MQTT sensor elke loop
+                    # Live update naar HA sensor
                     slug = name.lower().replace(" ", "_")
                     mqtt_client.publish(f"kidslock/{slug}/time", int(state["remaining_minutes"]), retain=True)
 
-                # 4. Bedtijd parsen
+                # Bedtijd check
                 bt_str = state["config"].get("bedtime", "21:00")
                 try:
                     bt = datetime.strptime(bt_str, "%H:%M").time()
@@ -160,7 +154,7 @@ def monitor_loop():
                 
                 is_bt = (now.time() > bt or now.time() < datetime.strptime("04:00", "%H:%M").time())
                 
-                # 5. Handelen op basis van tijd/bedtijd
+                # Automatische acties
                 if first_run_done and not state["manual_override"]:
                     if (state["remaining_minutes"] <= 0 or is_bt) and not state["locked"]:
                         control_tv(name, "lock")
@@ -172,7 +166,7 @@ def monitor_loop():
 
 threading.Thread(target=monitor_loop, daemon=True).start()
 
-# --- FastAPI Web Server ---
+# --- FastAPI Web ---
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
@@ -186,7 +180,7 @@ async def toggle(name: str):
         action = "unlock" if tv_states[name]["locked"] else "lock"
         control_tv(name, action)
         tv_states[name]["manual_override"] = True
-    return RedirectResponse(url="./", status_code=303) # Relatieve redirect
+    return RedirectResponse(url="./", status_code=303)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
