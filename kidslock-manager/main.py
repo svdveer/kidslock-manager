@@ -1,16 +1,16 @@
 import logging, threading, time, sqlite3, requests, subprocess, json, os
 import paho.mqtt.client as mqtt
 from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 import uvicorn
 
-# --- Logger & Config ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("KidsLock")
 DB_PATH = "/data/kidslock.db"
 OPTIONS_PATH = "/data/options.json"
 
+# --- MQTT Config ---
 try:
     with open(OPTIONS_PATH, 'r') as f:
         options = json.load(f)
@@ -36,7 +36,7 @@ init_db()
 tv_states = {}
 data_lock = threading.RLock()
 
-# --- MQTT ---
+# --- MQTT Client ---
 mqtt_client = mqtt.Client()
 
 def on_connect(client, userdata, flags, rc):
@@ -130,19 +130,21 @@ async def settings(request: Request):
     cursor.execute("SELECT * FROM tv_config"); tvs = cursor.fetchall(); conn.close()
     return templates.TemplateResponse("settings.html", {"request": request, "tvs": tvs})
 
-@app.post("/add_tv")
-async def add_tv(request: Request, name:str=Form(...), ip:str=Form(...), limit:int=Form(...), bedtime:str=Form(...), no_limit:int=Form(0)):
+# --- API ENDPOINTS (No Refresh) ---
+
+@app.post("/api/add_tv")
+async def add_tv(name:str=Form(...), ip:str=Form(...), limit:int=Form(...), bedtime:str=Form(...), no_limit:int=Form(0)):
     conn = sqlite3.connect(DB_PATH)
     conn.execute("INSERT OR REPLACE INTO tv_config VALUES (?,?,?,?,?)", (name, ip, limit, bedtime, no_limit))
     conn.commit(); conn.close()
-    return RedirectResponse(url=request.headers.get("referer", "/settings"), status_code=303)
+    return {"status": "ok"}
 
-@app.post("/delete_tv/{name}")
-async def delete_tv(request: Request, name: str):
+@app.post("/api/delete_tv/{name}")
+async def delete_tv(name: str):
     conn = sqlite3.connect(DB_PATH)
     conn.execute("DELETE FROM tv_config WHERE name = ?", (name,))
     conn.commit(); conn.close()
-    return RedirectResponse(url=request.headers.get("referer", "/settings"), status_code=303)
+    return {"status": "ok"}
 
 @app.post("/api/toggle_lock/{name}")
 async def toggle_api(name: str):
@@ -158,11 +160,12 @@ async def toggle_api(name: str):
             except: pass
     return {"status": "ok"}
 
-@app.post("/add_time/{name}")
-async def add_time(request: Request, name: str, minutes: int = Form(...)):
+@app.post("/api/add_time/{name}")
+async def add_time_api(name: str, minutes: int = Form(...)):
     with data_lock:
-        if name in tv_states: tv_states[name]["remaining"] += minutes
-    return RedirectResponse(url=request.headers.get("referer", "/"), status_code=303)
+        if name in tv_states: 
+            tv_states[name]["remaining"] += minutes
+    return {"status": "ok"}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

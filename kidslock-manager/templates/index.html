@@ -5,49 +5,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { font-family: sans-serif; background: #f0f2f5; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-        .card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; width: 100%; max-width: 400px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); border-top: 5px solid #ccc; transition: all 0.3s ease; }
+        .card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; width: 100%; max-width: 400px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); border-top: 5px solid #ccc; }
         .card.online { border-top-color: #34a853; }
-        .card.locked { border-top-color: #ea4335; background: #fff5f5; }
-        .btn { padding: 12px; border: none; border-radius: 8px; cursor: pointer; color: white; font-weight: bold; flex: 1; font-size: 14px; text-align: center; }
+        .card.locked { border-top-color: #ea4335; }
+        .btn { padding: 12px; border: none; border-radius: 8px; cursor: pointer; color: white; font-weight: bold; flex: 1; text-align: center; font-size: 14px; }
         .btn-blue { background: #1a73e8; }
         .btn-red { background: #ea4335; }
         .btn-green { background: #34a853; }
-        h1 { color: #1c1e21; }
-        .status-dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; }
-        .dot-online { background-color: #34a853; }
-        .dot-offline { background-color: #ccc; }
+        .btn:disabled { background: #ccc; cursor: not-allowed; }
     </style>
 </head>
 <body>
     <h1>🔐 KidsLock</h1>
-    <a href="settings" style="margin-bottom: 20px; display: block; text-decoration: none; color: #1a73e8; font-weight: bold;">⚙ Instellingen</a>
+    <a href="settings" style="margin-bottom: 20px; display: block; text-decoration: none; color: #1a73e8;">⚙ Instellingen</a>
 
     {% for tv in tvs %}
     <div class="card {% if tv.online %}online{% endif %} {% if tv.locked %}locked{% endif %}">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h2 style="margin: 0;">{{ tv.name }}</h2>
-            <span class="status-dot {% if tv.online %}dot-online{% else %}dot-offline{% endif %}"></span>
+        <h2>{{ tv.name }}</h2>
+        <div style="font-size: 2.5em; font-weight: bold; margin-bottom: 10px;">
+            {% if tv.no_limit == 1 %} ∞ {% else %} {{ tv.remaining|int }} <span style="font-size: 0.5em;">min</span> {% endif %}
         </div>
-        
-        <div style="font-size: 2.5em; font-weight: bold; margin: 15px 0;">
-            {% if tv.no_limit == 1 %} 
-                <span style="color: #1a73e8;">∞</span> 
-            {% else %} 
-                {{ tv.remaining|int }} <span style="font-size: 0.4em; color: #666;">min</span>
-            {% endif %}
-        </div>
-
-        <div style="display: flex; gap: 10px; margin-top: 15px;">
+        <div style="display: flex; gap: 10px;">
             {% if tv.no_limit != 1 %}
-            <form action="add_time/{{ tv.name }}" method="post" style="flex:1; display:flex;">
-                <input type="hidden" name="minutes" value="15">
-                <button type="submit" class="btn btn-blue">+15m</button>
-            </form>
+            <button id="add-{{ tv.name }}" onclick="apiCall('/api/add_time/{{ tv.name }}', 'minutes=15')" class="btn btn-blue">+15m</button>
             {% endif %}
-
-            <button onclick="toggleLock('{{ tv.name }}')" 
-                    class="btn {% if tv.locked %}btn-green{% else %}btn-red{% endif %}" 
-                    id="btn-{{ tv.name }}">
+            
+            <button id="lock-{{ tv.name }}" onclick="apiCall('/api/toggle_lock/{{ tv.name }}')" 
+                    class="btn {% if tv.locked %}btn-green{% else %}btn-red{% endif %}">
                 {% if tv.locked %}Unlock{% else %}Lock{% endif %}
             </button>
         </div>
@@ -55,18 +39,21 @@
     {% endfor %}
 
     <script>
-        async function toggleLock(name) {
-            const btn = document.getElementById('btn-' + name);
-            btn.disabled = true;
-            btn.innerText = "...";
+        async function apiCall(url, bodyContent = null) {
+            const options = { method: 'POST' };
+            if (bodyContent) {
+                options.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+                options.body = bodyContent;
+            }
             
             try {
-                await fetch('/api/toggle_lock/' + name, { method: 'POST' });
-                // Herlaad de pagina na een korte vertraging om de nieuwe status te zien
-                setTimeout(() => window.location.reload(), 500);
+                const response = await fetch(url, options);
+                if (response.ok) {
+                    // Forceert een refresh binnen het huidige frame
+                    window.location.reload();
+                }
             } catch (e) {
-                alert("Fout bij schakelen");
-                btn.disabled = false;
+                console.error("API Error", e);
             }
         }
     </script>
