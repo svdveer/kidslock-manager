@@ -10,7 +10,6 @@ logger = logging.getLogger("KidsLock")
 DB_PATH = "/data/kidslock.db"
 OPTIONS_PATH = "/data/options.json"
 
-# --- MQTT Config ---
 try:
     with open(OPTIONS_PATH, 'r') as f:
         options = json.load(f)
@@ -36,23 +35,16 @@ init_db()
 tv_states = {}
 data_lock = threading.RLock()
 
-# --- MQTT Client ---
+# --- MQTT ---
 mqtt_client = mqtt.Client()
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
-        logger.info(f"MQTT Verbonden met {MQTT_HOST}")
         with data_lock:
             for name in tv_states:
                 slug = name.lower().replace(" ", "_")
-                discovery_payload = {
-                    "name": f"{name} Lock",
-                    "command_topic": f"kidslock/{slug}/set",
-                    "state_topic": f"kidslock/{slug}/state",
-                    "unique_id": f"kidslock_{slug}",
-                    "device": {"identifiers": ["kidslock_mgr"], "name": "KidsLock Manager"}
-                }
-                client.publish(f"homeassistant/switch/kidslock_{slug}/config", json.dumps(discovery_payload), retain=True)
+                discovery = {"name": f"{name} Lock", "command_topic": f"kidslock/{slug}/set", "state_topic": f"kidslock/{slug}/state", "unique_id": f"kidslock_{slug}", "device": {"identifiers": ["kidslock_mgr"], "name": "KidsLock Manager"}}
+                client.publish(f"homeassistant/switch/kidslock_{slug}/config", json.dumps(discovery), retain=True)
                 client.subscribe(f"kidslock/{slug}/set")
 
 def on_message(client, userdata, msg):
@@ -70,15 +62,12 @@ def on_message(client, userdata, msg):
 
 mqtt_client.on_connect = on_connect
 mqtt_client.on_message = on_message
-
 if mqtt_conf.get("username"):
     mqtt_client.username_pw_set(mqtt_conf["username"], mqtt_conf.get("password"))
-
 try:
     mqtt_client.connect_async(MQTT_HOST, MQTT_PORT)
     mqtt_client.loop_start()
-except:
-    logger.error("MQTT connectie mislukt")
+except: pass
 
 # --- Monitor ---
 def monitor():
@@ -102,8 +91,7 @@ def monitor():
                     res = subprocess.run(['ping', '-c', '1', '-W', '1', s["ip"]], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     s["online"] = (res.returncode == 0)
                     if s["no_limit"] == 1:
-                        if s["locked"]:
-                            requests.post(f"http://{s['ip']}:8080/unlock", timeout=1.5); s["locked"] = False
+                        if s["locked"]: requests.post(f"http://{s['ip']}:8080/unlock", timeout=1.5); s["locked"] = False
                     elif s["online"] and not s["locked"]:
                         s["remaining"] = max(0, s["remaining"] - delta)
                     if s["remaining"] <= 0 and not s["locked"] and s["no_limit"] == 0:
@@ -130,21 +118,18 @@ async def settings(request: Request):
     cursor.execute("SELECT * FROM tv_config"); tvs = cursor.fetchall(); conn.close()
     return templates.TemplateResponse("settings.html", {"request": request, "tvs": tvs})
 
-# --- API ENDPOINTS (No Refresh) ---
-
+# --- API ---
 @app.post("/api/add_tv")
 async def add_tv(name:str=Form(...), ip:str=Form(...), limit:int=Form(...), bedtime:str=Form(...), no_limit:int=Form(0)):
     conn = sqlite3.connect(DB_PATH)
     conn.execute("INSERT OR REPLACE INTO tv_config VALUES (?,?,?,?,?)", (name, ip, limit, bedtime, no_limit))
-    conn.commit(); conn.close()
-    return {"status": "ok"}
+    conn.commit(); conn.close(); return {"status": "ok"}
 
 @app.post("/api/delete_tv/{name}")
 async def delete_tv(name: str):
     conn = sqlite3.connect(DB_PATH)
     conn.execute("DELETE FROM tv_config WHERE name = ?", (name,))
-    conn.commit(); conn.close()
-    return {"status": "ok"}
+    conn.commit(); conn.close(); return {"status": "ok"}
 
 @app.post("/api/toggle_lock/{name}")
 async def toggle_api(name: str):
@@ -163,8 +148,7 @@ async def toggle_api(name: str):
 @app.post("/api/add_time/{name}")
 async def add_time_api(name: str, minutes: int = Form(...)):
     with data_lock:
-        if name in tv_states: 
-            tv_states[name]["remaining"] += minutes
+        if name in tv_states: tv_states[name]["remaining"] += minutes
     return {"status": "ok"}
 
 if __name__ == "__main__":
