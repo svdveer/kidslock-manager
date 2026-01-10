@@ -97,20 +97,18 @@ mqtt_client = mqtt.Client()
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
-        logger.info("Verbonden met MQTT Broker!")
+        logger.info("✅ Succesvol verbonden met MQTT Broker!")
         for tv_name in tv_states:
             publish_discovery(tv_name)
             update_mqtt_state(tv_name)
-            # Subscribe op command topic
             slug = tv_name.lower().replace(" ", "_")
             client.subscribe(f"kidslock/{slug}/set")
     else:
-        logger.error(f"MQTT Connectie mislukt met code {rc}")
+        logger.error(f"❌ MQTT Connectie mislukt met code {rc}. Check credentials!")
 
 def on_message(client, userdata, msg):
     topic = msg.topic
     payload = msg.payload.decode()
-    
     with data_lock:
         for tv_name, state in tv_states.items():
             slug = tv_name.lower().replace(" ", "_")
@@ -125,7 +123,14 @@ def on_message(client, userdata, msg):
 mqtt_client.on_connect = on_connect
 mqtt_client.on_message = on_message
 
-# Gebruik de interne HA MQTT broker
+# FIX: Haal MQTT credentials op uit Home Assistant Environment
+mqtt_user = os.getenv("MQTT_USER")
+mqtt_pass = os.getenv("MQTT_PASSWORD")
+
+if mqtt_user and mqtt_pass:
+    mqtt_client.username_pw_set(mqtt_user, mqtt_pass)
+    logger.info("MQTT credentials geladen uit supervisor.")
+
 try:
     mqtt_client.connect("core-mosquitto", 1883, 60)
     mqtt_client.loop_start()
@@ -146,7 +151,7 @@ def publish_discovery(tv_name):
     }
     mqtt_client.publish(f"homeassistant/switch/kidslock_{slug}/config", json.dumps(switch_config), retain=True)
 
-    # Discovery Sensor (Tijd over)
+    # Discovery Sensor
     sensor_config = {
         "name": f"{tv_name} Tijd over",
         "state_topic": f"kidslock/{slug}/time",
@@ -165,14 +170,12 @@ def update_mqtt_state(tv_name):
 
 # --- TV Control Logic ---
 def ping_tv(ip):
-    # -c 1 (1 packet), -W 1 (1 sec timeout)
     response = os.system(f"ping -c 1 -W 1 {ip} > /dev/null 2>&1")
     return response == 0
 
 def control_tv(tv_name, action, reason):
     state = tv_states[tv_name]
     ip = state["config"]["ip"]
-    
     if action == "lock" and state["locked"]: return
     if action == "unlock" and not state["locked"]: return
 
@@ -200,7 +203,6 @@ def monitor_loop():
         last_tick = current_time
         current_now = datetime.now()
         
-        # Reset om middernacht
         if current_now.day != last_day:
             with data_lock:
                 for tv_name, state in tv_states.items():
@@ -209,24 +211,28 @@ def monitor_loop():
                     update_mqtt_state(tv_name)
             last_day = current_now.day
 
-        # Check alle TV's
         with data_lock:
             for tv_name, state in tv_states.items():
                 is_online = ping_tv(state["config"]["ip"])
                 state["online"] = is_online
                 
-                # Tijd aftrekken indien TV aan is en NO LIMIT uit staat
                 if is_online and not state["locked"]:
                     if not state["config"].get("no_limit_mode", False):
                         state["remaining_minutes"] = max(0, state["remaining_minutes"] - delta_minutes)
                         save_state(tv_name, state["remaining_minutes"])
                 
-                # Check Bedtijd
-                bedtime_str = state["config"].get("bedtime", "20:00")
-                bedtime = datetime.strptime(bedtime_str, "%H:%M").time()
+                # FIX: Robuuste Bedtijd parsen (voorkomt crash bij '0' of lege velden)
+                bedtime_str = str(state["config"].get("bedtime", "20:00"))
+                try:
+                    if ":" not in bedtime_str:
+                        raise ValueError
+                    bedtime_dt = datetime.strptime(bedtime_str, "%H:%M").time()
+                except ValueError:
+                    logger.warning(f"⚠️ Ongeldige bedtijd '{bedtime_str}' voor {tv_name}. Fallback naar 20:00.")
+                    bedtime_dt = datetime.strptime("20:00", "%H:%M").time()
+
                 now_time = current_now.time()
-                
-                is_bedtime = (now_time > bedtime or now_time < datetime.strptime("04:00", "%H:%M").time())
+                is_bedtime = (now_time > bedtime_dt or now_time < datetime.strptime("04:00", "%H:%M").time())
                 time_up = state["remaining_minutes"] <= 0
                 
                 if not state["manual_override"]:
@@ -239,7 +245,6 @@ def monitor_loop():
 
         time.sleep(30)
 
-# Start Monitor Thread
 threading.Thread(target=monitor_loop, daemon=True).start()
 
 # --- FastAPI / Ingress ---
@@ -258,7 +263,7 @@ async def read_root(request: Request):
                 "locked": state["locked"],
                 "remaining": int(state["remaining_minutes"]),
                 "limit": state["config"]["daily_limit"],
-                "bedtime": state["config"].get("bedtime", "N/B"),
+                "bedtime": state["config"].get("bedtime", "20:00"),
                 "no_limit": state["config"].get("no_limit_mode", False)
             })
     return templates.TemplateResponse("index.html", {"request": request, "tvs": display_tvs})
