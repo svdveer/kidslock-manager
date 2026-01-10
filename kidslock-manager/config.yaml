@@ -1,7 +1,7 @@
 name: "KidsLock Manager"
-version: "1.4.8"
+version: "1.4.9"
 slug: "kidslock-manager"
-description: "Stabiele v1.4.8 - Robuuste Monitor Loop"
+description: "Stabiele v1.4.9 - MQTT Integratie met Defaults"
 url: "https://github.com/svdveer/kidslock-repository"
 arch:
   - aarch64
@@ -12,3 +12,9 @@ boot: auto
 ingress: true
 ingress_port: 8000
 panel_icon: mdi:lock-settings
+schema:
+  mqtt:
+    host: str?
+    port: int?
+    username: str?
+    password: str?
